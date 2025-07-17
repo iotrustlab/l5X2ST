@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 import logging
 import click
+from datetime import datetime
 
 from .l5x2st import L5X2STConverter, convert_st_to_l5x_file
 from .st2l5x import ST2L5XConverter, convert_st_to_l5x_string
@@ -216,6 +217,63 @@ def st2l5x(input_file: str, output_file: str, use_ir: bool, verbose: bool):
         sys.exit(1)
 
 
+@click.command()
+@click.option('--input', '-i', 'input_file', required=True, help='Input L5X file')
+@click.option('--output', '-o', 'output_file', required=True, help='Output JSON file')
+@click.option('--verbose', '-v', is_flag=True, help='Verbose output')
+def extract_io(input_file: str, output_file: str, verbose: bool):
+    """Extract I/O tag definitions from L5X file and output as JSON."""
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    
+    try:
+        import json
+        import l5x
+        
+        click.echo(f"📖 Reading L5X file: {input_file}")
+        
+        # Load L5X project
+        project = l5x.Project(input_file)
+        
+        # Extract I/O tags using IRConverter
+        ir_converter = IRConverter()
+        io_tags = ir_converter.extract_io_tags(project)
+        
+        # Prepare output data
+        output_data = {
+            'source_file': input_file,
+            'extraction_time': datetime.now().isoformat(),
+            'total_io_tags': len(io_tags),
+            'io_tags': io_tags
+        }
+        
+        # Write JSON output
+        with open(output_file, 'w') as f:
+            json.dump(output_data, f, indent=2)
+        
+        click.echo(f"✅ Extracted {len(io_tags)} I/O tags to {output_file}")
+        
+        # Print summary
+        input_count = sum(1 for tag in io_tags if tag['direction'] == 'Input')
+        output_count = sum(1 for tag in io_tags if tag['direction'] == 'Output')
+        
+        click.echo(f"📊 Summary:")
+        click.echo(f"  - Input tags: {input_count}")
+        click.echo(f"  - Output tags: {output_count}")
+        
+        if verbose:
+            click.echo(f"\n📋 I/O Tags:")
+            for tag in io_tags:
+                click.echo(f"  - {tag['name']} ({tag['direction']}, {tag['data_type']})")
+        
+    except Exception as e:
+        click.echo(f"❌ Error: {e}", err=True)
+        if verbose:
+            import traceback
+            traceback.print_exc()
+        sys.exit(1)
+
+
 def main():
     """Main entry point for the combined tool."""
     parser = argparse.ArgumentParser(
@@ -235,6 +293,9 @@ Examples:
   # Convert ST to L5X (IR/guardrail mode)
   l5x-st-compiler st2l5x -i program.st -o output.L5X --use-ir
   
+  # Extract I/O tags from L5X file
+  l5x-st-compiler extract-io -i Control.L5X -o io_mapping.json
+  
   # Convert directory of L5X files
   l5x-st-compiler l5x2st -d l5x_files -o consolidated.st
         """
@@ -242,8 +303,8 @@ Examples:
     
     parser.add_argument(
         'command',
-        choices=['l5x2st', 'st2l5x'],
-        help='Conversion direction'
+        choices=['l5x2st', 'st2l5x', 'extract-io'],
+        help='Command to execute'
     )
     
     # Parse the command
@@ -340,6 +401,72 @@ Examples:
         except SystemExit:
             # If argparse fails, show help
             st2l5x_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'extract-io':
+        # Parse the remaining arguments for extract-io
+        extract_io_parser = argparse.ArgumentParser()
+        extract_io_parser.add_argument('--input', '-i', required=True)
+        extract_io_parser.add_argument('--output', '-o', required=True)
+        extract_io_parser.add_argument('--verbose', '-v', action='store_true')
+        
+        try:
+            extract_io_args = extract_io_parser.parse_args(remaining)
+            
+            # Call the extract_io function directly, bypassing click
+            if extract_io_args.verbose:
+                logging.basicConfig(level=logging.DEBUG)
+            
+            try:
+                import json
+                import l5x
+                from datetime import datetime
+                
+                print(f"📖 Reading L5X file: {extract_io_args.input}")
+                
+                # Load L5X project
+                project = l5x.Project(extract_io_args.input)
+                
+                # Extract I/O tags using IRConverter
+                ir_converter = IRConverter()
+                io_tags = ir_converter.extract_io_tags(project)
+                
+                # Prepare output data
+                output_data = {
+                    'source_file': extract_io_args.input,
+                    'extraction_time': datetime.now().isoformat(),
+                    'total_io_tags': len(io_tags),
+                    'io_tags': io_tags
+                }
+                
+                # Write JSON output
+                with open(extract_io_args.output, 'w') as f:
+                    json.dump(output_data, f, indent=2)
+                
+                print(f"✅ Extracted {len(io_tags)} I/O tags to {extract_io_args.output}")
+                
+                # Print summary
+                input_count = sum(1 for tag in io_tags if tag['direction'] == 'Input')
+                output_count = sum(1 for tag in io_tags if tag['direction'] == 'Output')
+                
+                print(f"📊 Summary:")
+                print(f"  - Input tags: {input_count}")
+                print(f"  - Output tags: {output_count}")
+                
+                if extract_io_args.verbose:
+                    print(f"\n📋 I/O Tags:")
+                    for tag in io_tags:
+                        print(f"  - {tag['name']} ({tag['direction']}, {tag['data_type']})")
+                
+            except Exception as e:
+                print(f"❌ Error: {e}")
+                if extract_io_args.verbose:
+                    import traceback
+                    traceback.print_exc()
+                sys.exit(1)
+            
+        except SystemExit:
+            # If argparse fails, show help
+            extract_io_parser.print_help()
             sys.exit(1)
 
 

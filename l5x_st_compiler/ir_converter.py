@@ -679,4 +679,120 @@ class IRConverter:
         if total_components == 0:
             return 1.0
         
-        return matched_components / total_components 
+        return matched_components / total_components
+
+    def extract_io_tags(self, project) -> List[Dict[str, Any]]:
+        """Extract I/O tag definitions from L5X project.
+        
+        Returns a list of dictionaries containing:
+        - name: Tag name
+        - direction: 'Input' or 'Output' (determined by tag name patterns)
+        - data_type: Data type (BOOL, REAL, etc.)
+        - description: Tag description if available
+        - scope: Tag scope (Controller or Program)
+        """
+        io_tags = []
+        
+        # Extract controller tags
+        if hasattr(project.controller, 'tags'):
+            for tag_name in project.controller.tags.names:
+                try:
+                    tag_data = project.controller.tags[tag_name]
+                    io_info = self._extract_io_tag_info(tag_name, tag_data, TagScope.CONTROLLER)
+                    if io_info:
+                        io_tags.append(io_info)
+                except Exception as e:
+                    logger.warning(f"Could not extract I/O tag {tag_name}: {e}")
+        
+        # Extract program tags
+        if hasattr(project, 'programs'):
+            for program in project.programs:
+                if hasattr(program, 'tags'):
+                    for tag_name in program.tags.names:
+                        try:
+                            tag_data = program.tags[tag_name]
+                            io_info = self._extract_io_tag_info(tag_name, tag_data, TagScope.PROGRAM)
+                            if io_info:
+                                io_tags.append(io_info)
+                        except Exception as e:
+                            logger.warning(f"Could not extract I/O tag {tag_name}: {e}")
+        
+        return io_tags
+    
+    def _extract_io_tag_info(self, name: str, tag_data, scope: TagScope) -> Optional[Dict[str, Any]]:
+        """Extract I/O tag information and determine direction."""
+        try:
+            # Get basic tag info
+            data_type = getattr(tag_data, 'data_type', 'UNKNOWN')
+            clean_type = get_data_type(data_type)
+            description = getattr(tag_data, 'description', None)
+            
+            # Determine direction based on tag name patterns
+            direction = self._determine_io_direction(name)
+            
+            # Only include tags that appear to be I/O related
+            if direction:
+                return {
+                    'name': name,
+                    'direction': direction,
+                    'data_type': clean_type,
+                    'description': description,
+                    'scope': scope.value
+                }
+            
+            return None
+            
+        except Exception as e:
+            logger.warning(f"Error extracting I/O tag {name}: {e}")
+            return None
+    
+    def _determine_io_direction(self, tag_name: str) -> Optional[str]:
+        """Determine if a tag is an input or output based on naming patterns.
+        
+        Common patterns:
+        - Input tags: often start with 'I', 'IN', 'AI', 'DI', 'SI' (Sensor Input)
+        - Output tags: often start with 'O', 'OUT', 'AO', 'DO', 'SO' (Setpoint Output)
+        - Feedback tags: often contain 'FB', 'FEEDBACK', 'PV' (Process Value)
+        - Setpoint tags: often contain 'SP', 'SETPOINT', 'CMD' (Command)
+        """
+        tag_upper = tag_name.upper()
+        
+        # Input patterns
+        input_patterns = [
+            'I_', 'IN_', 'AI_', 'DI_', 'SI_',  # Direct input patterns
+            'SENSOR', 'FEEDBACK', 'FB_', 'PV_',  # Sensor/feedback patterns
+            'TEMP', 'PRESSURE', 'FLOW', 'LEVEL',  # Common sensor types
+            'STATUS', 'ALARM', 'FAULT'  # Status indicators
+        ]
+        
+        # Output patterns
+        output_patterns = [
+            'O_', 'OUT_', 'AO_', 'DO_', 'SO_',  # Direct output patterns
+            'SETPOINT', 'SP_', 'CMD_', 'CONTROL',  # Control patterns
+            'VALVE', 'PUMP', 'MOTOR', 'HEATER',  # Common actuator types
+            'ENABLE', 'RESET', 'START', 'STOP'  # Control commands
+        ]
+        
+        # Check input patterns
+        for pattern in input_patterns:
+            if tag_upper.startswith(pattern) or pattern in tag_upper:
+                return 'Input'
+        
+        # Check output patterns
+        for pattern in output_patterns:
+            if tag_upper.startswith(pattern) or pattern in tag_upper:
+                return 'Output'
+        
+        # If no clear pattern, try to infer from context
+        # Tags ending with numbers are often I/O (e.g., AI_001, DO_002)
+        if any(char.isdigit() for char in tag_name):
+            # Check if it looks like a module tag (e.g., Local:1:I.Data.0)
+            if ':' in tag_name and any(part.isdigit() for part in tag_name.split(':')):
+                # Try to determine from the module type
+                if any(module_type in tag_upper for module_type in ['I.', 'AI.', 'DI.']):
+                    return 'Input'
+                elif any(module_type in tag_upper for module_type in ['O.', 'AO.', 'DO.']):
+                    return 'Output'
+        
+        # If we can't determine, return None (not an I/O tag)
+        return None 
