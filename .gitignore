@@ -1,0 +1,77 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project-specific generated files
+# Sampledata-specific analysis files
+COMPREHENSIVE_TEST_SUMMARY.md
+L5K_OVERLAY_COMPARISON.md
+examples/IR_COMPARISON_SUMMARY.md
+examples/ir_comparison_p2.json
+
+# Generated output files from testing
+P*_output.st
+P*_roundtrip.L5X
+P*_with_overlay*.st
+P*_without_overlay.st
+output_*.st
+roundtrip_*.L5X
+roundtrip_test_output.st
+ir_roundtrip_output.L5X
+generated_project.L5X
+
+# Debug and test files
+debug_l5x.py
+test_st2l5x.py
+examples/sample_project.L5K
+
+# Sampledata directory (contains large test files)
+sampledata/
+
+# Temporary files
+*.tmp
+*.temp 
