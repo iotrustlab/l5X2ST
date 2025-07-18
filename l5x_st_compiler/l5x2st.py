@@ -30,7 +30,7 @@ from .utils import (
     _extract_function_blocks, extract_program_logic_from_xml
 )
 from .instructions import process_routine, process_routines
-from .st2l5x import convert_st_to_l5x, convert_st_to_l5x_string
+from .st2l5x import ST2L5XConverter, convert_st_to_l5x, convert_st_to_l5x_string
 
 logger = logging.getLogger(__name__)
 
@@ -668,6 +668,99 @@ class L5X2STConverter:
         
         return '\n'.join(variables), '\n'.join(program_logic)
 
+    def convert_enhanced_roundtrip(self, l5x_file_path: str, l5k_overlay_path: Optional[str] = None) -> ET.Element:
+        """
+        Enhanced roundtrip conversion: L5X → ST → L5X with complete tag preservation.
+        
+        Args:
+            l5x_file_path: Path to the L5X file
+            l5k_overlay_path: Optional path to L5K file for additional context
+            
+        Returns:
+            Enhanced L5X XML element with preserved tags and metadata
+        """
+        try:
+            # Step 1: Convert L5X to ST with L5K overlay
+            st_code = self.convert_l5x_to_st(l5x_file_path, l5k_overlay_path)
+            
+            # Step 2: Extract original tag information for preservation
+            project = l5x.Project(l5x_file_path)
+            original_tags = self._extract_original_tags(project)
+            
+            # Step 3: Use enhanced ST2L5X converter with tag preservation
+            enhanced_converter = ST2L5XConverter()
+            
+            # Preserve original tag scopes and metadata
+            enhanced_converter.preserve_tag_scopes(original_tags)
+            
+            # Set L5K context if available
+            l5k_context = None
+            if l5k_overlay_path:
+                from .l5k_overlay import L5KOverlay
+                l5k_overlay = L5KOverlay(l5k_overlay_path)
+                l5k_context = l5k_overlay.get_summary()
+                enhanced_converter.set_l5k_context(l5k_context)
+            
+            # Step 4: Convert ST back to L5X with enhanced preservation
+            enhanced_l5x_xml = enhanced_converter.parse_st_code(st_code, l5k_context)
+            
+            return enhanced_l5x_xml
+            
+        except Exception as e:
+            logger.error(f"Error in enhanced roundtrip conversion: {e}")
+            raise
+    
+    def _extract_original_tags(self, project) -> Dict[str, Dict]:
+        """Extract original tag information for preservation."""
+        original_tags = {}
+        
+        try:
+            # Extract controller tags
+            if hasattr(project, 'controller') and hasattr(project.controller, 'tags'):
+                for tag_name in project.controller.tags:
+                    tag = project.controller.tags[tag_name]
+                    original_tags[tag_name] = {
+                        'scope': 'Controller',
+                        'data_type': getattr(tag, 'DataType', 'Unknown'),
+                        'description': getattr(tag, 'Description', ''),
+                        'external_access': getattr(tag, 'ExternalAccess', ''),
+                        'radix': getattr(tag, 'Radix', ''),
+                        'constant': getattr(tag, 'Constant', False),
+                        'alias_for': getattr(tag, 'AliasFor', ''),
+                        'array_dimensions': getattr(tag, 'Dimension', ''),
+                        'initial_value': getattr(tag, 'Value', ''),
+                        'tag_type': getattr(tag, 'TagType', 'Base'),
+                        'usage': getattr(tag, 'Usage', '')
+                    }
+            
+            # Extract program tags
+            if hasattr(project, 'programs'):
+                for prog_name in project.programs:
+                    program = project.programs[prog_name]
+                    if hasattr(program, 'tags'):
+                        for tag_name in program.tags:
+                            tag = program.tags[tag_name]
+                            original_tags[tag_name] = {
+                                'scope': 'Program',
+                                'program': prog_name,
+                                'data_type': getattr(tag, 'DataType', 'Unknown'),
+                                'description': getattr(tag, 'Description', ''),
+                                'external_access': getattr(tag, 'ExternalAccess', ''),
+                                'radix': getattr(tag, 'Radix', ''),
+                                'constant': getattr(tag, 'Constant', False),
+                                'alias_for': getattr(tag, 'AliasFor', ''),
+                                'array_dimensions': getattr(tag, 'Dimension', ''),
+                                'initial_value': getattr(tag, 'Value', ''),
+                                'tag_type': getattr(tag, 'TagType', 'Base'),
+                                'usage': getattr(tag, 'Usage', '')
+                            }
+                            
+        except Exception as e:
+            logger.error(f"Error extracting original tags: {e}")
+        
+        return original_tags 
+
+
 def convert_st_to_l5x_file(st_code: str, output_file: str) -> None:
     """
     Convert Structured Text code to L5X file.
@@ -706,4 +799,29 @@ def convert_st_to_l5x_element(st_code: str) -> ET.Element:
         return convert_st_to_l5x(st_code)
     except Exception as e:
         logger.error(f"Error converting ST to L5X element: {e}")
+        raise 
+
+
+def convert_enhanced_roundtrip_file(l5x_file_path: str, output_file: str, l5k_overlay_path: Optional[str] = None) -> None:
+    """
+    Enhanced roundtrip conversion: L5X → ST → L5X with complete tag preservation.
+    
+    Args:
+        l5x_file_path: Path to the input L5X file
+        output_file: Path to the output enhanced L5X file
+        l5k_overlay_path: Optional path to L5K file for additional context
+    """
+    try:
+        converter = L5X2STConverter()
+        enhanced_l5x_xml = converter.convert_enhanced_roundtrip(l5x_file_path, l5k_overlay_path)
+        
+        # Write enhanced L5X to file
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
+            f.write(ET.tostring(enhanced_l5x_xml, encoding='unicode', method='xml'))
+        
+        logger.info(f"Successfully completed enhanced roundtrip conversion: {output_file}")
+        
+    except Exception as e:
+        logger.error(f"Error in enhanced roundtrip conversion: {e}")
         raise 

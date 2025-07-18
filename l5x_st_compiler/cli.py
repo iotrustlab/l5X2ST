@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 import click
 from datetime import datetime
+import xml.etree.ElementTree as ET
 
 from .l5x2st import L5X2STConverter, convert_st_to_l5x_file
 from .st2l5x import ST2L5XConverter, convert_st_to_l5x_string
@@ -73,6 +74,12 @@ Examples:
     )
     
     parser.add_argument(
+        '--legacy',
+        action='store_true',
+        help='Use legacy conversion mode (basic tag generation without preservation)'
+    )
+    
+    parser.add_argument(
         '--verbose', '-v',
         action='store_true',
         help='Enable verbose output'
@@ -125,11 +132,21 @@ Examples:
                     print(f"Converting {args.input} to {args.output}")
                     if args.l5k_overlay:
                         print(f"Using L5K overlay: {args.l5k_overlay}")
+                    if args.legacy:
+                        print("Using legacy conversion mode (basic tag generation)")
+                    else:
+                        print("Using tag preservation mode (recommended)")
                 
-                # Use the newer convert_l5x_to_st method instead of convert_file
-                st_code = converter.convert_l5x_to_st(args.input, args.l5k_overlay)
-                with open(args.output, 'w', encoding='utf-8') as f:
-                    f.write(st_code)
+                if args.legacy:
+                    # Use legacy conversion (basic tag generation)
+                    st_code = converter.convert_l5x_to_st(args.input, args.l5k_overlay)
+                    with open(args.output, 'w', encoding='utf-8') as f:
+                        f.write(st_code)
+                else:
+                    # Use enhanced roundtrip conversion (default - tag preservation)
+                    from .l5x2st import convert_enhanced_roundtrip_file
+                    convert_enhanced_roundtrip_file(args.input, args.output, args.l5k_overlay)
+                    print(f"Tag preservation conversion completed: {args.output}")
                 
             elif args.directory:
                 # Convert directory
@@ -156,8 +173,9 @@ Examples:
 @click.option('--input', '-i', 'input_file', required=True, help='Input ST file')
 @click.option('--output', '-o', 'output_file', required=True, help='Output L5X file')
 @click.option('--use-ir', is_flag=True, help='Use IR/guardrail mode for round-trip conversion')
+@click.option('--legacy', is_flag=True, help='Use legacy conversion mode (basic tag generation without preservation)')
 @click.option('--verbose', '-v', is_flag=True, help='Verbose output')
-def st2l5x(input_file: str, output_file: str, use_ir: bool, verbose: bool):
+def st2l5x(input_file: str, output_file: str, use_ir: bool, legacy: bool, verbose: bool):
     """Convert Structured Text (ST) to L5X format."""
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
@@ -209,8 +227,21 @@ def st2l5x(input_file: str, output_file: str, use_ir: bool, verbose: bool):
             with open(input_file, 'r', encoding='utf-8') as f:
                 st_code = f.read()
             
-            convert_st_to_l5x_file(st_code, output_file)
-            click.echo(f"✅ Successfully converted {input_file} to {output_file}")
+            if legacy:
+                # Use legacy conversion (basic tag generation)
+                st2l5x_converter = ST2L5XConverter()
+                l5x_xml = st2l5x_converter.parse_st_code(st_code)
+                
+                # Write legacy L5X
+                with open(output_file, 'w', encoding='utf-8') as f:
+                    f.write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
+                    f.write(ET.tostring(l5x_xml, encoding='unicode', method='xml'))
+                
+                click.echo(f"✅ Legacy conversion completed: {output_file}")
+            else:
+                # Standard conversion
+                convert_st_to_l5x_file(st_code, output_file)
+                click.echo(f"✅ Successfully converted {input_file} to {output_file}")
         
     except Exception as e:
         click.echo(f"❌ Error: {e}", err=True)
@@ -281,14 +312,23 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Convert L5X to ST (standard mode)
+  # Convert L5X to ST (default - tag preservation mode)
   l5x-st-compiler l5x2st -i project.L5X -o output.st
+  
+  # Convert L5X to ST (legacy mode - basic tag generation)
+  l5x-st-compiler l5x2st -i project.L5X -o output.st --legacy
+  
+  # Convert L5X to ST (tag preservation with L5K overlay)
+  l5x-st-compiler l5x2st -i project.L5X -o output.st --l5k-overlay overlay.L5K
   
   # Convert L5X to ST (IR/guardrail mode)
   l5x-st-compiler l5x2st -i project.L5X -o output.st --use-ir
   
-  # Convert ST to L5X (standard mode)
+  # Convert ST to L5X (default - tag preservation mode)
   l5x-st-compiler st2l5x -i program.st -o output.L5X
+  
+  # Convert ST to L5X (legacy mode - basic tag generation)
+  l5x-st-compiler st2l5x -i program.st -o output.L5X --legacy
   
   # Convert ST to L5X (IR/guardrail mode)
   l5x-st-compiler st2l5x -i program.st -o output.L5X --use-ir
@@ -330,6 +370,7 @@ Examples:
         st2l5x_parser.add_argument('--input', '-i', required=True)
         st2l5x_parser.add_argument('--output', '-o', required=True)
         st2l5x_parser.add_argument('--use-ir', action='store_true')
+        st2l5x_parser.add_argument('--legacy', action='store_true')
         st2l5x_parser.add_argument('--verbose', '-v', action='store_true')
         
         try:
@@ -391,8 +432,21 @@ Examples:
                     with open(st2l5x_args.input, 'r', encoding='utf-8') as f:
                         st_code = f.read()
                     
-                    convert_st_to_l5x_file(st_code, st2l5x_args.output)
-                    print(f"✅ Successfully converted {st2l5x_args.input} to {st2l5x_args.output}")
+                    if st2l5x_args.legacy:
+                        # Use legacy conversion (basic tag generation)
+                        st2l5x_converter = ST2L5XConverter()
+                        l5x_xml = st2l5x_converter.parse_st_code(st_code)
+                        
+                        # Write legacy L5X
+                        with open(st2l5x_args.output, 'w', encoding='utf-8') as f:
+                            f.write('<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n')
+                            f.write(ET.tostring(l5x_xml, encoding='unicode', method='xml'))
+                        
+                        print(f"✅ Legacy conversion completed: {st2l5x_args.output}")
+                    else:
+                        # Standard conversion
+                        convert_st_to_l5x_file(st_code, st2l5x_args.output)
+                        print(f"✅ Successfully converted {st2l5x_args.input} to {st2l5x_args.output}")
                 
             except Exception as e:
                 print(f"❌ Error: {e}")
