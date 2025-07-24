@@ -39,6 +39,10 @@ A modern Python 3 implementation for converting between L5X files (Allen Bradley
 - **Guardrail Validation**: Optional `--use-ir` flag for enhanced validation
 - **Industrial-Grade Reliability**: Handles complex Rockwell automation projects
 - **Metadata Comparison**: Tools to analyze differences between overlay and non-overlay conversions
+- **IR Export and Analysis**: Export IR components to JSON for downstream processing
+- **Interactive Querying API**: Programmatic access to IR components with search and analysis
+- **Control Flow Analysis**: Extract and analyze control flow structures from routines
+- **Cross-Program Interaction Detection**: Identify dependencies between programs and controllers
 
 ## Installation
 
@@ -108,6 +112,21 @@ python -m l5x_st_compiler.cli st2l5x -i program.st -o output.L5X --use-ir
 
 # With verbose output
 python -m l5x_st_compiler.cli st2l5x -i program.st -o output.L5X -v
+```
+
+#### Export IR Components
+```bash
+# Export basic IR components (tags and control flow)
+python -m l5x_st_compiler.cli export-ir -i P1.L5X -o out/ir_dump.json --include tags,control_flow
+
+# Export all IR components
+python -m l5x_st_compiler.cli export-ir -i P1.L5X -o out/ir_full.json --include tags,control_flow,data_types,function_blocks,interactions,routines,programs
+
+# Export with verbose output
+python -m l5x_st_compiler.cli export-ir -i P1.L5X -o out/ir_dump.json --include tags,control_flow -v
+
+# Export specific components only
+python -m l5x_st_compiler.cli export-ir -i P1.L5X -o out/tags_only.json --include tags
 ```
 
 ### Python API
@@ -187,6 +206,45 @@ diff_report = ir_converter.compare_ir(ir_without, ir_with)
 print(f"Tags added: {diff_report['tags_added']}")
 print(f"Tasks added: {diff_report['tasks_added']}")
 print(f"Modules added: {diff_report['modules_added']}")
+```
+
+#### IR Export and Querying
+```python
+from l5x_st_compiler import IRConverter, export_ir_to_json, InteractiveIRQuery
+import l5x
+
+# Load L5X project and convert to IR
+project = l5x.Project("project.L5X")
+ir_converter = IRConverter()
+ir_project = ir_converter.l5x_to_ir(project)
+
+# Export IR components to JSON
+export_data = export_ir_to_json(
+    ir_project=ir_project,
+    output_path="ir_export.json",
+    include=["tags", "control_flow", "data_types", "interactions"],
+    pretty_print=True
+)
+
+# Interactive querying
+query = InteractiveIRQuery(ir_project)
+
+# Find tags by prefix
+lit_tags = query.find_tags_by_prefix("LIT")
+print(f"Found {len(lit_tags)} tags with prefix 'LIT'")
+
+# Get control flow for a routine
+control_flow = query.get_control_flow("MainRoutine", "MainProgram")
+if control_flow:
+    print(f"Control flow type: {control_flow['type']}")
+
+# Get tag dependencies
+dependencies = query.get_dependencies("P101")
+print(f"Tag P101 referenced by: {dependencies['referenced_by']}")
+
+# Get project summary
+summary = query.get_project_summary()
+print(f"Project has {summary['tags']['total_tags']} total tags")
 ```
 
 ## Project Structure

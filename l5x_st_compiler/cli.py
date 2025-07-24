@@ -12,6 +12,7 @@ from .l5x2st import L5X2STConverter, convert_st_to_l5x_file
 from .st2l5x import ST2L5XConverter, convert_st_to_l5x_string
 from .ir_converter import IRConverter
 from .models import RoundTripInfo
+from .export_ir import export_ir_to_json
 
 
 def validate_ir(ir_project) -> list:
@@ -336,6 +337,9 @@ Examples:
   # Extract I/O tags from L5X file
   l5x-st-compiler extract-io -i Control.L5X -o io_mapping.json
   
+  # Export IR components to JSON
+  l5x-st-compiler export-ir -i P1.L5X -o out/ir_dump.json --include tags,control_flow
+  
   # Convert directory of L5X files
   l5x-st-compiler l5x2st -d l5x_files -o consolidated.st
         """
@@ -343,7 +347,7 @@ Examples:
     
     parser.add_argument(
         'command',
-        choices=['l5x2st', 'st2l5x', 'extract-io'],
+        choices=['l5x2st', 'st2l5x', 'extract-io', 'export-ir'],
         help='Command to execute'
     )
     
@@ -521,6 +525,78 @@ Examples:
         except SystemExit:
             # If argparse fails, show help
             extract_io_parser.print_help()
+            sys.exit(1)
+    elif args.command == 'export-ir':
+        # Parse the remaining arguments for export-ir
+        export_ir_parser = argparse.ArgumentParser()
+        export_ir_parser.add_argument('--input', '-i', required=True, help='Input L5X file')
+        export_ir_parser.add_argument('--output', '-o', required=True, help='Output JSON file')
+        export_ir_parser.add_argument('--include', nargs='+', default=['tags', 'control_flow'], 
+                                     help='Components to include (tags, control_flow, data_types, function_blocks, interactions, routines, programs)')
+        export_ir_parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
+        
+        try:
+            export_ir_args = export_ir_parser.parse_args(remaining)
+            
+            # Call the export_ir function directly
+            if export_ir_args.verbose:
+                logging.basicConfig(level=logging.DEBUG)
+            
+            try:
+                import l5x
+                from pathlib import Path
+                
+                print(f"📖 Reading L5X file: {export_ir_args.input}")
+                
+                # Load L5X project
+                project = l5x.Project(export_ir_args.input)
+                
+                # Convert to IR
+                ir_converter = IRConverter()
+                ir_project = ir_converter.l5x_to_ir(project)
+                
+                print(f"🔄 Converting to IR...")
+                print(f"  - Controller: {ir_project.controller.name}")
+                print(f"  - Programs: {len(ir_project.programs)}")
+                print(f"  - Controller tags: {len(ir_project.controller.tags)}")
+                
+                # Export IR to JSON
+                print(f"📤 Exporting IR components: {', '.join(export_ir_args.include)}")
+                export_data = export_ir_to_json(
+                    ir_project=ir_project,
+                    output_path=export_ir_args.output,
+                    include=export_ir_args.include,
+                    pretty_print=True
+                )
+                
+                print(f"✅ Successfully exported IR to {export_ir_args.output}")
+                
+                # Print summary
+                metadata = export_data.get('metadata', {})
+                print(f"📊 Export Summary:")
+                print(f"  - Controller: {metadata.get('source_controller', 'Unknown')}")
+                print(f"  - Programs: {metadata.get('total_programs', 0)}")
+                print(f"  - Routines: {metadata.get('total_routines', 0)}")
+                print(f"  - Exported components: {', '.join(export_ir_args.include)}")
+                
+                if export_ir_args.verbose:
+                    print(f"\n📋 Detailed Summary:")
+                    for component in export_ir_args.include:
+                        if component in export_data:
+                            summary = export_data[component].get('summary', {})
+                            for key, value in summary.items():
+                                print(f"  - {component}.{key}: {value}")
+                
+            except Exception as e:
+                print(f"❌ Error: {e}")
+                if export_ir_args.verbose:
+                    import traceback
+                    traceback.print_exc()
+                sys.exit(1)
+            
+        except SystemExit:
+            # If argparse fails, show help
+            export_ir_parser.print_help()
             sys.exit(1)
 
 
